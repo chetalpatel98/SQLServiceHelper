@@ -1,0 +1,64 @@
+using System.Data.SqlClient;
+using System.Globalization;
+
+namespace employSystemPrectical.SQLDataAccess
+{
+    public class SQlDataService : ISQlDataService
+    {
+        private readonly string _connectionString;
+        private readonly int _timeOut;
+
+        public SQlDataService(IConfiguration configuration)
+        {
+            _connectionString = configuration.GetConnectionString("CN-dbEmploySystem");
+            _timeOut = 30 * 3;
+        }
+        public void EXICUTE_DML(string quary)
+        {
+            using (SqlConnection con = new SqlConnection(_connectionString))
+            {
+                con.Open();
+                using (SqlCommand cmd = new SqlCommand(quary, con))
+                {
+                    cmd.CommandTimeout = _timeOut;
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+        public List<T> GETRecords<T>(string quary) where T : new()
+        {
+            List<T> records = new List<T>();
+            using (SqlConnection con = new SqlConnection(_connectionString))
+            {
+                con.Open();
+                using (SqlCommand cmd = new SqlCommand(quary, con))
+                {
+                    cmd.CommandTimeout = _timeOut;
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var properties = typeof(T).GetProperties();
+
+                            HashSet<string> Columns = new HashSet<string>();
+                            for (int i = 0; i < reader.FieldCount; i++)
+                            {
+                                Columns.Add(reader.GetName(i));
+                            }
+                            T obj = new T();
+                            foreach (var prop in properties)
+                            {
+                                if (Columns.Contains(prop.Name) && reader.IsDBNull(reader.GetOrdinal(prop.Name)))
+                                {
+                                    prop.SetValue(obj, reader[prop.Name]);
+                                }
+                            }
+                            records.Add(obj);
+                        }
+                    }
+                }
+            }
+            return records;
+        }
+    }
+}
