@@ -1,0 +1,159 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using System.Data;
+using System.Data.SqlClient;
+using CrudApp.DAL;
+using CrudApp.Models;
+using System.Collections.Generic;
+using System.IO;
+using Microsoft.Extensions.Configuration;
+
+namespace CrudApp.Controllers
+{
+    public class UserController : Controller
+    {
+        private readonly DbHelper _dbHelper;
+
+        public UserController(IConfiguration configuration)
+        {
+            _dbHelper = new DbHelper(configuration);
+        }
+
+        public IActionResult Index()
+        {
+            string query = "SELECT * FROM Users";
+            DataTable dt = _dbHelper.ExecuteQuery(query);
+            List<User> users = new List<User>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                users.Add(new User
+                {
+                    Id = (int)row["Id"],
+                    Name = row["Name"].ToString(),
+                    Email = row["Email"].ToString(),
+                    StateId = (int)row["StateId"],
+                    CityId = (int)row["CityId"],
+                    ProfilePhoto = row["ProfilePhoto"].ToString()
+                });
+            }
+            return View(users);
+        }
+
+        public IActionResult Create()
+        {
+            ViewBag.States = GetStates();
+            return View();
+        }
+
+        [HttpPost]
+        public IActionResult Create(User user, IFormFile profilePhoto)
+        {
+            if (profilePhoto != null)
+            {
+                string filePath = Path.Combine("wwwroot/uploads", profilePhoto.FileName);
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    profilePhoto.CopyTo(stream);
+                }
+                user.ProfilePhoto = "/uploads/" + profilePhoto.FileName;
+            }
+
+            string query = "INSERT INTO Users (Name, Email, StateId, CityId, ProfilePhoto) VALUES (@Name, @Email, @StateId, @CityId, @ProfilePhoto)";
+            SqlParameter[] parameters = {
+                new SqlParameter("@Name", user.Name),
+                new SqlParameter("@Email", user.Email),
+                new SqlParameter("@StateId", user.StateId),
+                new SqlParameter("@CityId", user.CityId),
+                new SqlParameter("@ProfilePhoto", user.ProfilePhoto ?? "")
+            };
+            _dbHelper.ExecuteNonQuery(query, parameters);
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        public JsonResult GetCities(int stateId)
+        {
+            string query = "SELECT * FROM Cities WHERE StateId = @StateId";
+            SqlParameter[] parameters = { new SqlParameter("@StateId", stateId) };
+            DataTable dt = _dbHelper.ExecuteQuery(query, parameters);
+
+            List<City> cities = new List<City>();
+            foreach (DataRow row in dt.Rows)
+            {
+                cities.Add(new City
+                {
+                    Id = (int)row["Id"],
+                    Name = row["Name"].ToString(),
+                    StateId = (int)row["StateId"]
+                });
+            }
+            return Json(cities);
+        }
+
+        private List<State> GetStates()
+        {
+            string query = "SELECT * FROM States";
+            DataTable dt = _dbHelper.ExecuteQuery(query);
+            List<State> states = new List<State>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                states.Add(new State
+                {
+                    Id = (int)row["Id"],
+                    Name = row["Name"].ToString()
+                });
+            }
+            return states;
+        }
+    }
+}
+-----------------------------------------------------------------------------------------------
+@model CrudApp.Models.User
+@{
+    ViewBag.Title = "Create User";
+}
+
+<form asp-action="Create" method="post" enctype="multipart/form-data">
+    <label>Name:</label>
+    <input type="text" asp-for="Name" required />
+
+    <label>Email:</label>
+    <input type="email" asp-for="Email" required />
+
+    <label>State:</label>
+    <select id="stateDropdown" asp-for="StateId" class="form-control">
+        <option value="">Select State</option>
+        @foreach (var state in ViewBag.States)
+        {
+            <option value="@state.Id">@state.Name</option>
+        }
+    </select>
+
+    <label>City:</label>
+    <select id="cityDropdown" asp-for="CityId" class="form-control">
+        <option value="">Select City</option>
+    </select>
+
+    <label>Profile Photo:</label>
+    <input type="file" name="profilePhoto" />
+
+    <button type="submit">Submit</button>
+</form>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    $(document).ready(function () {
+        $("#stateDropdown").change(function () {
+            var stateId = $(this).val();
+            $.get("/User/GetCities?stateId=" + stateId, function (data) {
+                var cityDropdown = $("#cityDropdown");
+                cityDropdown.empty();
+                $.each(data, function (i, city) {
+                    cityDropdown.append($("<option>").val(city.id).text(city.name));
+                });
+            });
+        });
+    });
+</script>
