@@ -1,0 +1,146 @@
+upload file  with manage dropdown ->
+@model CrudApp.Data.User
+@{
+    ViewBag.Title = "Create User";
+}
+
+<form asp-action="Create" method="post" enctype="multipart/form-data">
+    <label>Name:</label>
+    <input type="text" asp-for="Name" required />
+
+    <label>Email:</label>
+    <input type="email" asp-for="Email" required />
+
+    <label>State:</label>
+    <select id="stateDropdown" asp-for="StateId" class="form-control">
+        <option value="">Select State</option>
+        @foreach (var state in ViewBag.States)
+        {
+            <option value="@state.Id">@state.Name</option>
+        }
+    </select>
+
+    <label>City:</label>
+    <select id="cityDropdown" asp-for="CityId" class="form-control">
+        <option value="">Select City</option>
+    </select>
+
+    <label>Profile Photo:</label>
+    <input type="file" name="profilePhoto" />
+
+    <button type="submit">Submit</button>
+</form>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    $(document).ready(function () {
+        $("#stateDropdown").change(function () {
+            var stateId = $(this).val();
+            $.get("/User/GetCities?stateId=" + stateId, function (data) {
+                var cityDropdown = $("#cityDropdown");
+                cityDropdown.empty();
+                $.each(data, function (i, city) {
+                    cityDropdown.append($("<option>").val(city.id).text(city.name));
+                });
+            });
+        });
+    });
+</script>
+_--------------------------------------_-------------------------------------------------------
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using CrudApp.Data;
+using Microsoft.EntityFrameworkCore;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace CrudApp.Controllers
+{
+    public class UserController : Controller
+    {
+        private readonly ApplicationDbContext _context;
+
+        public UserController(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<IActionResult> Index()
+        {
+            var users = await _context.Users.Include(u => u.State).Include(u => u.City).ToListAsync();
+            return View(users);
+        }
+
+        public IActionResult Create()
+        {
+            ViewBag.States = _context.States.ToList();
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Create(User user, IFormFile profilePhoto)
+        {
+            if (ModelState.IsValid)
+            {
+                if (profilePhoto != null)
+                {
+                    string filePath = Path.Combine("wwwroot/uploads", profilePhoto.FileName);
+                    using (var stream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await profilePhoto.CopyToAsync(stream);
+                    }
+                    user.ProfilePhoto = "/uploads/" + profilePhoto.FileName;
+                }
+
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+                return RedirectToAction(nameof(Index));
+            }
+            return View(user);
+        }
+
+        public async Task<IActionResult> Edit(int id)
+        {
+            var user = await _context.Users.FindAsync(id);
+            ViewBag.States = _context.States.ToList();
+            return View(user);
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Edit(User user, IFormFile profilePhoto)
+        {
+            if (ModelState.IsValid)
+            {
+                if (profilePhoto != null)
+                {
+                    string filePath = Path.Combine("wwwroot/uploads", profilePhoto.FileName);
+                    using (var stream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await profilePhoto.CopyToAsync(stream);
+                    }
+                    user.ProfilePhoto = "/uploads/" + profilePhoto.FileName;
+                }
+
+                _context.Users.Update(user);
+                await _context.SaveChangesAsync();
+                return RedirectToAction(nameof(Index));
+            }
+            return View(user);
+        }
+
+        public async Task<IActionResult> Delete(int id)
+        {
+            var user = await _context.Users.FindAsync(id);
+            _context.Users.Remove(user);
+            await _context.SaveChangesAsync();
+            return RedirectToAction(nameof(Index));
+        }
+
+        public JsonResult GetCities(int stateId)
+        {
+            var cities = _context.Cities.Where(c => c.StateId == stateId).ToList();
+            return Json(cities);
+        }
+    }
+}
